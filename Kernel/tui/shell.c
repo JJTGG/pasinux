@@ -1,13 +1,16 @@
 #include "tui_wm.h"
 #include "tui_core.h"
 #include "widgets.h"
+#include "elf.h"
 #include "fat12.h"
 #include "http.h"
+#include "keyboard.h"
 #include "serial.h"
 #include "mm_fs.h"
 #include "rtc.h"
 #include "sched_fs.h"
 #include "timer.h"
+#include "vga.h"
 
 static fat12_fs_t* g_fs = NULL;
 static tui_win_t* g_shell_win = NULL;
@@ -120,6 +123,8 @@ static void cmd_help(const char* args) {
     shell_append_output("  write <f> <text>  write text to a file\n");
     shell_append_output("  mkdir <d>   create a directory\n");
     shell_append_output("  rm <f>      delete a file/dir\n");
+    shell_append_output("  run <prog>  run an ELF32 program from disk\n");
+    shell_append_output("  notepad     run the notepad text editor\n");
     shell_append_output("  pkg install <f>   download file from pkg host\n");
     shell_append_output("  pkg host <ip>     set pkg server IP (default 10.0.2.2)\n");
     shell_append_output("  about       show about window\n");
@@ -325,6 +330,35 @@ static void cmd_rm(const char* args) {
     }
 }
 
+/* Run an ELF32 program from the FAT12 root directory in ring 3. Runs
+ * synchronously: the shell (and the whole WM event loop) is blocked until
+ * the program exits via SYS_EXIT. */
+static void cmd_run(const char* args) {
+    const char* prog = args;
+    if (!*prog) { shell_append_output("usage: run <program.elf>\n"); return; }
+    shell_append_output("[run] launching ");
+    shell_append_output(prog);
+    shell_append_output(" ...\n");
+
+    /* The program owns the whole VGA screen and reads raw keys, so park
+     * the TUI keyboard hook while it runs. */
+    keyboard_set_tui_mode(0);
+    int rc = user_prog_exec(g_fs, prog);
+    keyboard_set_tui_mode(1);
+
+    vga_clear();
+    if (rc == 0) {
+        shell_append_output("[run] exited\n");
+    } else {
+        shell_append_output("[run] load failed\n");
+    }
+}
+
+static void cmd_notepad(const char* args) {
+    (void)args;
+    cmd_run("NOTEPAD.BIN");
+}
+
 static void cmd_about(const char* args) {
     (void)args;
     tui_win_t* about = tui_win_create("About", 40, 10);
@@ -440,6 +474,8 @@ static const struct {
     {"write", cmd_write},
     {"mkdir", cmd_mkdir},
     {"rm", cmd_rm},
+    {"run", cmd_run},
+    {"notepad", cmd_notepad},
     {"about", cmd_about},
     {"clock", cmd_clock},
     {"pkg", cmd_pkg},

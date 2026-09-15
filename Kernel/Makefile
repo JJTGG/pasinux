@@ -41,11 +41,22 @@ FREE_OBJS := boot/entry.o arch/isr.o kernel/kmain.o drivers/vga.o arch/idt.o \
              drivers/rtl8139.o net/net_eth.o net/net_arp.o net/net_ip.o \
              net/net_tcp.o net/http.o net/json.o \
              drivers/ata.o fs/fat12.o \
+             mm/pmm.o fs/elf.o \
              drivers/ps2mouse.o drivers/rtc.o \
              tui/tui_core.o tui/tui_wm.o tui/widgets.o tui/shell.o
 IMAGE := pasinux.img
 
-.PHONY: all clean run syntax gui run-gui sanitize image boot qemu qemu-sdl qemu-debug qemu-headless qemu-serial
+# i686-ELF cross toolchain for user-mode programs (ELF32).
+# https://github.com/lordmilko/i686-elf-tools (Windows build)
+ELF_TOOLCHAIN ?= C:/Users/lekov/AppData/Local/bin/i686-elf-tools/bin
+ELFCC ?= $(ELF_TOOLCHAIN)/i686-elf-gcc.exe
+
+NOTEPAD_ELF := NOTEPAD.elf
+USER_CFLAGS := -m32 -ffreestanding -fno-pic -fno-pie -nostdlib \
+               -fno-stack-protector -fno-asynchronous-unwind-tables \
+               -O1 -Wall -Wextra -Werror
+
+.PHONY: all clean run syntax gui run-gui sanitize image boot qemu qemu-sdl qemu-debug qemu-headless qemu-serial notepad
 
 all: $(TARGET)
 
@@ -107,10 +118,16 @@ kernel.pe: $(FREE_OBJS) boot/linker.ld
 		--section-alignment 16 --file-alignment 16 \
 		-e _start -o $@ $(FREE_OBJS)
 
-kernel.bin: kernel.pe boot/boot.bin boot/mkimage.py
+kernel.bin: kernel.pe boot/boot.bin boot/mkimage.py $(NOTEPAD_ELF)
 	$(PYTHON) boot/mkimage.py --pe kernel.pe --boot boot/boot.bin \
 		--kernel-bin kernel.bin --image $(IMAGE) \
-		--kernel-sectors $(KERNEL_SECTORS)
+		--kernel-sectors $(KERNEL_SECTORS) \
+		--program NOTEPAD.BIN $(NOTEPAD_ELF)
+
+$(NOTEPAD_ELF): user/notepad.c user/user.ld
+	$(ELFCC) $(USER_CFLAGS) -T user/user.ld -o $@ user/notepad.c
+
+notepad: $(NOTEPAD_ELF)
 
 $(IMAGE): kernel.bin
 
@@ -142,5 +159,5 @@ qemu-serial: $(IMAGE)
 		$(QEMU_NET) -display none -serial stdio -monitor none
 
 clean:
-	rm -f $(OBJS) $(TARGET) $(TARGET).exe $(GUI_OBJS) $(GUI_TARGET) $(GUI_TARGET).exe $(SAN_TARGET) $(SAN_TARGET).exe $(FREE_OBJS) kernel.pe kernel.bin $(IMAGE)
+	rm -f $(OBJS) $(TARGET) $(TARGET).exe $(GUI_OBJS) $(GUI_TARGET) $(GUI_TARGET).exe $(SAN_TARGET) $(SAN_TARGET).exe $(FREE_OBJS) kernel.pe kernel.bin $(IMAGE) $(NOTEPAD_ELF)
 	rm -rf $(SAN_DIR)

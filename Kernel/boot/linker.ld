@@ -1,32 +1,47 @@
+/* Freestanding kernel layout.
+ *
+ * VMA = 0xC0010000 (higher half — kernel runs at 3 GB + 64 KB).
+ * The boot sector loads the image at physical 0x10000.
+ * Entry.asm sets up paging (PDE[768] → phys 0) then jumps to the higher-half VMA. */
 ENTRY(_start)
 
 SECTIONS
 {
-    . = 0x10000;
+    . = 0xC0010000;
 
-    .text ALIGN(0x1000) : {
-        *(.text .text.*)
+    .text : AT(0x10000) {
+        *(.text)
+        *(.text.*)
     }
 
-    .rodata ALIGN(0x1000) : {
-        *(.rodata .rodata.*)
+    .rdata : {
+        *(.rdata)
+        *(.rdata.*)
+        *(.rodata)
+        *(.rodata.*)
     }
 
-    .data ALIGN(0x1000) : {
-        *(.data .data.*)
+    .data : {
+        *(.data)
+        *(.data.*)
     }
 
-    .bss ALIGN(0x1000) : {
-        __bss_start = .;
-        *(.bss .bss.*)
+    .bss : {
+        _bss_start = .;
+        *(.bss)
+        *(.bss.*)
         *(COMMON)
-        __bss_end = .;
+        _bss_end = .;
     }
-
-    _kernel_end = .;
 
     /DISCARD/ : {
-        *(.comment)
-        *(.note*)
+        *(.reloc)
+        *(.idata*)
+        *(.CRT*)
+        *(.tls*)
+        *(.rdata$zzz)
+        *(.pdata)
+        *(.xdata)
+        *(.eh_frame*)
     }
 }
